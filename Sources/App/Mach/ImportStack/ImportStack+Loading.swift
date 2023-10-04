@@ -62,7 +62,7 @@ extension Array where Element == ImportStackEntry {
                                 let entry = ImportStackEntry(dylibOrdinal: libOrdinal,
                                                              symbol: symbol.bytes,
                                                              symbolRange: symbolRange,
-                                                             weak: weakly)
+                                                             weak: (importVal.weak_import != 0))
                                 stack.append(entry)
                                 break
                             case DYLD_CHAINED_IMPORT_ADDEND:
