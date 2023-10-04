@@ -16,7 +16,7 @@ extension NibArchive {
         let const2: UInt32 = data.getStruct(atOffset: 14)
         return headerData == SupportedConsts.header
             && const1 == SupportedConsts.const1
-            && const2 == SupportedConsts.const2
+            && const2 >= SupportedConsts.const2
     }
 
     static func load(from url: URL) -> Nib {
@@ -26,7 +26,7 @@ extension NibArchive {
         let const1: UInt32 = data.getStruct(atOffset: 10)
         precondition(const1 == SupportedConsts.const1, "Unsupported NIBArchive version")
         let const2: UInt32 = data.getStruct(atOffset: 14)
-        precondition(const2 == SupportedConsts.const2, "Unsupported NIBArchive version")
+        precondition(const2 >= SupportedConsts.const2, "Unsupported NIBArchive version")
         let objectsCount = Int(data.getStruct(atOffset: 18) as UInt32)
         let objectsOffset = Int(data.getStruct(atOffset: 22) as UInt32)
         let keyCount = Int(data.getStruct(atOffset: 26) as UInt32)
