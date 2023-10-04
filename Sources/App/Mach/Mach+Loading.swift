@@ -80,6 +80,8 @@ private extension Mach {
         segments = []
         symtab = nil
         dyldInfo = nil
+        exportsTrie = nil
+        chainedFixups = nil
 
         var cmdsLeft = header.ncmds
         var cursor = MemoryLayout<mach_header>.size
@@ -98,6 +100,12 @@ private extension Mach {
             case LC_DYLD_INFO_ONLY:
                 let dyld_info_command: dyld_info_command = data.getStruct(atOffset: cursor)
                 dyldInfo = DyldInfo(dyld_info_command)
+            case LC_DYLD_EXPORTS_TRIE:
+                let dyld_exports_trie: linkedit_data_command = data.getStruct(atOffset: cursor)
+                exportsTrie = ExportsTrie(dyld_exports_trie)
+            case LC_DYLD_CHAINED_FIXUPS:
+                let dyld_chained_fixups: linkedit_data_command = data.getStruct(atOffset: cursor)
+                chainedFixups = ChainedFixups(dyld_chained_fixups)
             case LC_RPATH:
                 let rpath_command: rpath_command = data.getStruct(atOffset: cursor)
                 let rpath = data.getCString(atOffset: cursor + Int(rpath_command.path.offset))
@@ -134,6 +142,8 @@ private extension Mach {
         segments = []
         symtab = nil
         dyldInfo = nil
+        exportsTrie = nil
+        chainedFixups = nil
 
         var cmdsLeft = header.ncmds
         var cursor = MemoryLayout<mach_header_64>.size
@@ -152,6 +162,12 @@ private extension Mach {
             case LC_DYLD_INFO_ONLY:
                 let dyld_info_command: dyld_info_command = data.getStruct(atOffset: cursor)
                 dyldInfo = DyldInfo(dyld_info_command)
+            case LC_DYLD_EXPORTS_TRIE:
+                let dyld_exports_trie: linkedit_data_command = data.getStruct(atOffset: cursor)
+                exportsTrie = ExportsTrie(dyld_exports_trie)
+            case LC_DYLD_CHAINED_FIXUPS:
+                let dyld_chained_fixups: linkedit_data_command = data.getStruct(atOffset: cursor)
+                chainedFixups = ChainedFixups(dyld_chained_fixups)
             case LC_RPATH:
                 let rpath_command: rpath_command = data.getStruct(atOffset: cursor)
                 let rpath = data.getCString(atOffset: cursor + Int(rpath_command.path.offset))
@@ -261,6 +277,20 @@ private extension Mach.DyldInfo {
         lazyBind = Range(offset: UInt64(dyld_info.lazy_bind_off), count: UInt64(dyld_info.lazy_bind_size))
         weakBind = Range(offset: UInt64(dyld_info.weak_bind_off), count: UInt64(dyld_info.weak_bind_size))
         exportRange = Range(offset: UInt64(dyld_info.export_off), count: UInt64(dyld_info.export_size))
+    }
+}
+
+private extension Mach.ExportsTrie {
+    init(_ linked_data: linkedit_data_command) {
+        cmd = Range(offset: UInt64(linked_data.cmd), count: UInt64(linked_data.cmdsize))
+        data = Range(offset: UInt64(linked_data.dataoff), count: UInt64(linked_data.datasize))
+    }
+}
+
+private extension Mach.ChainedFixups {
+    init(_ linked_data: linkedit_data_command) {
+        cmd = Range(offset: UInt64(linked_data.cmd), count: UInt64(linked_data.cmdsize))
+        data = Range(offset: UInt64(linked_data.dataoff), count: UInt64(linked_data.datasize))
     }
 }
 

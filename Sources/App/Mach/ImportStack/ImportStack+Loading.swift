@@ -1,4 +1,142 @@
 import Foundation
+import MachO
+
+extension Array where Element == ImportStackEntry {
+    mutating func add(chainedFixupsData: Data, range: Range<Int>, weakly: Bool) {
+        var stack = ImportStack()
+
+        let fixup_base = range.lowerBound
+
+        let header: ChainedFixups.dyld_chained_fixups_header = chainedFixupsData.getStruct(atOffset: fixup_base)
+
+        let starts_in_image: ChainedFixups.dyld_chained_starts_in_image = ChainedFixups.dyld_chained_starts_in_image(data: chainedFixupsData, offset: fixup_base + Int(header.starts_offset))
+
+        let offsets = starts_in_image.seg_info_offset
+        for offset in offsets {
+            if offset == 0 {
+                continue
+            }
+
+            let startsInSegment = ChainedFixups.dyld_chained_starts_in_segment(data: chainedFixupsData, offset: fixup_base + Int(header.starts_offset) + Int(offset))
+
+            let pageCount = Int(startsInSegment.page_count)
+
+            for pageIndex in 0..<pageCount {
+                let offsetInPage = startsInSegment.page_start[pageIndex]
+                if offsetInPage == DYLD_CHAINED_PTR_START_NONE {
+                    continue
+                }
+
+                if ((offsetInPage & UInt16(DYLD_CHAINED_PTR_START_MULTI)) != 0) {
+                    fatalError("PTR_START_MULTI not yet supported")
+                }
+
+                var chain: UInt64 = startsInSegment.segment_offset + UInt64(startsInSegment.page_size) * UInt64(pageIndex) + UInt64(offsetInPage)
+                var done = false
+
+                while !done {
+                    if startsInSegment.pointer_format == DYLD_CHAINED_PTR_64 ||
+                        startsInSegment.pointer_format == DYLD_CHAINED_PTR_64_OFFSET {
+                        let bind: ChainedFixups.dyld_chained_ptr_64_bind = ChainedFixups.dyld_chained_ptr_64_bind(data: chainedFixupsData, offset: Int(chain))
+                        var next = bind.next
+                        if bind.bind == 1 {
+                            let indexOfImport = Int(bind.ordinal)
+
+                            switch header.imports_format {
+                            case DYLD_CHAINED_IMPORT:
+                                let importVal: ChainedFixups.dyld_chained_import = chainedFixupsData.getStruct(atOffset: fixup_base + Int(header.imports_offset) + Int(indexOfImport * 4))
+                                let symbolOffset = UInt32(fixup_base) + header.symbols_offset + importVal.name_offset
+                                let symbol = chainedFixupsData.getCString(atOffset: Int(symbolOffset))
+                                //print(String(format: "        0x%08x BIND     ordinal: %d   addend: %d    reserved: %d   next: %d   (%@)\n",
+                                 //            chain, bind.ordinal, bind.addend, bind.reserved, bind.next, symbol))
+
+                                var libOrdinal: Int
+                                let libVal: UInt8 = UInt8(importVal.lib_ordinal)
+                                if libVal > 0xF0 {
+                                    libOrdinal = Int(Int8(truncatingIfNeeded: libVal))
+                                } else {
+                                    libOrdinal = Int(libVal)
+                                }
+
+                                let symbolRange = Range(offset: UInt64(symbolOffset), count: UInt64(symbol.count))
+                                let entry = ImportStackEntry(dylibOrdinal: libOrdinal,
+                                                             symbol: symbol.bytes,
+                                                             symbolRange: symbolRange,
+                                                             weak: weakly)
+                                stack.append(entry)
+                                break
+                            case DYLD_CHAINED_IMPORT_ADDEND:
+                                let importVal: ChainedFixups.dyld_chained_import_addend = chainedFixupsData.getStruct(atOffset: fixup_base + Int(header.imports_offset) + Int(indexOfImport * 8))
+                                let symbolOffset = UInt32(fixup_base) + header.symbols_offset + importVal.name_offset
+                                let symbol = chainedFixupsData.getCString(atOffset: Int(symbolOffset))
+                                //print(String(format: "        0x%08x BIND     ordinal: %d   addend: %d    reserved: %d   next: %d   (%@)\n",
+                                 //                   chain, bind.ordinal, bind.addend, bind.reserved, bind.next, symbol))
+
+                                var libOrdinal: Int
+                                let libVal: UInt8 = UInt8(importVal.lib_ordinal)
+                                if libVal > 0xF0 {
+                                    libOrdinal = Int(Int8(truncatingIfNeeded: libVal))
+                                } else {
+                                    libOrdinal = Int(libVal)
+                                }
+
+                                let symbolRange = Range(offset: UInt64(symbolOffset), count: UInt64(symbol.count))
+                                let entry = ImportStackEntry(dylibOrdinal: libOrdinal,
+                                                             symbol: symbol.bytes,
+                                                             symbolRange: symbolRange,
+                                                             weak: (importVal.weak_import != 0))
+                                stack.append(entry)
+                                break
+                            case DYLD_CHAINED_IMPORT_ADDEND64:
+                                let importVal: ChainedFixups.dyld_chained_import_addend64 = chainedFixupsData.getStruct(atOffset: fixup_base + Int(header.imports_offset) + Int(indexOfImport * 16))
+                                let symbolOffset = UInt64(fixup_base) + UInt64(header.symbols_offset) + importVal.name_offset
+                                let symbol = chainedFixupsData.getCString(atOffset: Int(symbolOffset))
+                                //print(String(format: "        0x%08x BIND     ordinal: %d   addend: %d    reserved: %d   next: %d   (%@)\n",
+                                //                    chain, bind.ordinal, bind.addend, bind.reserved, bind.next, symbol))
+
+                                var libOrdinal: Int
+                                let libVal: UInt16 = UInt16(importVal.lib_ordinal)
+                                if libVal > 0xFFF0 {
+                                    libOrdinal = Int(Int16(truncatingIfNeeded: libVal))
+                                } else {
+                                    libOrdinal = Int(libVal)
+                                }
+
+                                let symbolRange = Range(offset: UInt64(symbolOffset), count: UInt64(symbol.count))
+                                let entry = ImportStackEntry(dylibOrdinal: libOrdinal,
+                                                             symbol: symbol.bytes,
+                                                             symbolRange: symbolRange,
+                                                             weak: (importVal.weak_import != 0))
+                                stack.append(entry)
+                                break
+                            default:
+                                fatalError("Unsupported chained import format")
+                                break
+                            }
+
+
+                        } else {
+                            let rebase: ChainedFixups.dyld_chained_ptr_64_rebase = ChainedFixups.dyld_chained_ptr_64_rebase(data: chainedFixupsData, offset: Int(chain))
+                            //print(String(format: "        %#010x REBASE   target: %#010llx   high8: %d   next: %d\n",
+                            //             chain, rebase.target, rebase.high8, rebase.next))
+                            next = rebase.next
+                        }
+
+                        if next == 0 {
+                            done = true
+                        } else {
+                            chain += next * 4
+                        }
+                    } else {
+                        fatalError("unsupported pointer format")
+                        break
+                    }
+                }
+            }
+        }
+        append(contentsOf: stack)
+    }
+}
 
 extension Array where Element == ImportStackEntry {
     mutating func add(opcodesData: Data, range: Range<Int>, weakly: Bool) {

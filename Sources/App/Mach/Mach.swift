@@ -81,4 +81,18 @@ struct Mach {
     }
 
     var dyldInfo: DyldInfo?
+
+    struct ExportsTrie: Equatable {
+        var cmd: Range<UInt64>
+        var data: Range<UInt64>
+    }
+
+    var exportsTrie: ExportsTrie?
+
+    struct ChainedFixups: Equatable {
+        var cmd: Range<UInt64>
+        var data: Range<UInt64>
+    }
+
+    var chainedFixups: ChainedFixups?
 }
