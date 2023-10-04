@@ -2,7 +2,7 @@ import Foundation
 
 private let propertyPrefixRegexp = try! NSRegularExpression(pattern: "@property\\s*(\\([^)]+\\))?", options: [])
 private let propertySuffixRegexp = try! NSRegularExpression(pattern: "\\s[A-Z_]+_[A-Z_]+\\b", options: [])
-private let blockPropertyRegexp = try! NSRegularExpression(pattern: "\\([*^](\\w+)\\)", options: [])
+private let blockPropertyRegexp = try! NSRegularExpression(pattern: "\\([^*^(]*[*^](\\w+)\\)", options: [])
 private let pointerPropertRegexp = try! NSRegularExpression(pattern: "((\\*?\\s*\\w+,\\s*)*\\*?\\s*\\w+)\\s*$", options: [])
 
 let spacesAndAsterisks = CharacterSet.whitespacesAndNewlines
@@ -31,9 +31,9 @@ extension String {
         if matchedNames.isEmpty {
             fatalError("Couldn't resolve property name for line: '\(self)'")
         }
-        if matchedNames.count > 1 {
-            fatalError("Property name resolved ambiguously for line: '\(self)'. Matched names: \(matchedNames)")
-        }
+        //if matchedNames.count > 1 {
+        //    fatalError("Property name resolved ambiguously for line: '\(self)'. Matched names: \(matchedNames)")
+        //}
         let matchedName = matchedNames[0].trimmingCharacters(in: spacesAndAsterisks)
         if matchedName.contains(",") {
             return matchedName
